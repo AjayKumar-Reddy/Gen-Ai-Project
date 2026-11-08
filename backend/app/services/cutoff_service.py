@@ -29,19 +29,22 @@ class CutoffService:
 
     def filter_by_rank(
         self,
-        student_rank: int,
+        student_rank: Optional[int] = None,
+        min_rank: Optional[int] = None,
+        max_rank: Optional[int] = None,
         category: str = "GM",
         branch: Optional[str] = None,
         counselling_round: int = 1,
         seat_region: str = "Rest of Karnataka",
         college_code: Optional[str] = None,
         college_name: Optional[str] = None,
+        year: Optional[int] = None,
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
         """
-        Retrieve colleges where student_rank <= closing_rank.
-        Historical closing rank equal to or greater than student's rank means
-        the candidate's rank fell within the historical cutoff range.
+        Execute deterministic structured SQL filtering over cutoff records.
+        Supports both point eligibility filtering (student_rank <= closing_rank)
+        and numerical rank range filtering (min_rank <= closing_rank <= max_rank).
         Excludes records with missing cutoff ranks (NULL).
         """
         db = self.get_db()
@@ -57,13 +60,24 @@ class CutoffService:
                 )
             )
 
+            # Examination year filter
+            if year:
+                query = query.filter(CutoffRecord.year == year)
+
             # Reservation category filter (exact uppercase)
             if category:
                 query = query.filter(CutoffRecord.category == category.upper())
 
-            # Candidate eligible cutoff condition:
-            # Historical closing rank must be >= student rank (student_rank <= closing_rank)
-            query = query.filter(CutoffRecord.closing_rank >= student_rank)
+            # Numerical Rank Conditions:
+            # 1. Point eligibility (student_rank <= closing_rank)
+            if student_rank is not None and student_rank > 0:
+                query = query.filter(CutoffRecord.closing_rank >= student_rank)
+
+            # 2. Rank Range queries (e.g. between min_rank and max_rank)
+            if min_rank is not None and min_rank > 0:
+                query = query.filter(CutoffRecord.closing_rank >= min_rank)
+            if max_rank is not None and max_rank > 0:
+                query = query.filter(CutoffRecord.closing_rank <= max_rank)
 
             # Engineering branch filter (matches course_code or course_name)
             if branch:

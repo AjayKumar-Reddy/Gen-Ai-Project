@@ -110,9 +110,9 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-[750px] bg-slate-50/50 border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-2">
+    <div className="flex flex-col h-full min-h-0 bg-white border border-slate-200/90 rounded-xl shadow-xs overflow-hidden">
+      {/* Messages Scroll Area - ONLY this area scrolls */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-3">
         {messages.map((msg) => (
           <ChatMessage
             key={msg.id}

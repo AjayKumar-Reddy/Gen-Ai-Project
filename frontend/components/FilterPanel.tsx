@@ -33,7 +33,7 @@ export default function FilterPanel({
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-4 flex flex-col gap-4">
+    <div className="bg-white border border-slate-200/90 rounded-xl shadow-xs p-3.5 flex flex-col gap-3 text-xs">
       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
         <div>
           <h3 className="text-sm font-bold text-slate-800">KCET Rank Eligibility</h3>

@@ -40,7 +40,7 @@ export default function ChatInput({ onSendMessage, isLoading }: Props) {
   }, [isLoading]);
 
   return (
-    <div className="border-t border-slate-200 bg-white p-3 md:p-4 rounded-b-xl shadow-xs">
+    <div className="flex-shrink-0 border-t border-slate-200 bg-white p-2.5 sm:p-3 rounded-b-xl shadow-xs">
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] text-slate-500">
         <span className="shrink-0 font-medium text-slate-600">Suggestions:</span>
         {EXAMPLE_QUERIES.map((q, idx) => (

@@ -22,6 +22,9 @@ def list_colleges(
     branch: Optional[str] = Query(None, description="Filter by branch / course code (e.g. CS)"),
     category: Optional[str] = Query(None, description="Filter by category (e.g. GM, 2AG)"),
     rank: Optional[int] = Query(None, description="Student rank (filters closing_rank >= rank)"),
+    min_rank: Optional[int] = Query(None, description="Minimum cutoff rank for range filtering"),
+    max_rank: Optional[int] = Query(None, description="Maximum cutoff rank for range filtering"),
+    year: Optional[int] = Query(None, description="Examination year (e.g. 2026)"),
     round: int = Query(1, description="Counselling round"),
     seat_region: str = Query("Rest of Karnataka", description="Seat region"),
     limit: int = Query(50, ge=1, le=200, description="Max records to return"),
@@ -39,6 +42,12 @@ def list_colleges(
 
         if rank is not None and rank > 0:
             query = query.filter(CutoffRecord.closing_rank >= rank)
+        if min_rank is not None and min_rank > 0:
+            query = query.filter(CutoffRecord.closing_rank >= min_rank)
+        if max_rank is not None and max_rank > 0:
+            query = query.filter(CutoffRecord.closing_rank <= max_rank)
+        if year is not None:
+            query = query.filter(CutoffRecord.year == year)
 
         if college_code:
             query = query.filter(CutoffRecord.college_code == college_code.strip().upper())

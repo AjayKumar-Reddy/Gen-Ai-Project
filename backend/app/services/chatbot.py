@@ -35,52 +35,85 @@ def extract_query_entities(query: str) -> Dict[str, Any]:
     if cat_match:
         entities["category"] = cat_match.group(1).upper()
 
-    # 3. KCET Rank (e.g. rank 5000, rank is 12000, 4500 rank)
-    rank_match = re.search(r"\b(?:rank|merit|rank\s*is|rank:?)\s*(\d+)\b", query, re.IGNORECASE)
-    if not rank_match:
-        rank_match = re.search(r"\b(\d+)\s*(?:rank|ranking)\b", query, re.IGNORECASE)
-    if rank_match:
+    # 3. KCET Rank or Numerical Rank Range
+    range_match = re.search(r"\b(?:between|from|range)\s+(\d+)\s*(?:and|to|-)\s*(\d+)\b", query, re.IGNORECASE)
+    if not range_match:
+        range_match = re.search(r"\b(?:rank|ranks)\s+(\d+)\s*(?:to|-)\s*(\d+)\b", query, re.IGNORECASE)
+    if range_match:
         try:
-            entities["student_rank"] = int(rank_match.group(1))
+            r1 = int(range_match.group(1))
+            r2 = int(range_match.group(2))
+            entities["min_rank"] = min(r1, r2)
+            entities["max_rank"] = max(r1, r2)
         except ValueError:
             pass
+    else:
+        rank_match = re.search(r"\b(?:rank|merit|rank\s*is|rank:?)\s*(\d+)\b", query, re.IGNORECASE)
+        if not rank_match:
+            rank_match = re.search(r"\b(\d+)\s*(?:rank|ranking)\b", query, re.IGNORECASE)
+        if rank_match:
+            try:
+                entities["student_rank"] = int(rank_match.group(1))
+            except ValueError:
+                pass
 
-    # 4. Engineering Branch abbreviations (avoid matching common English words like 'is')
-    # Match longer / unambiguous branch tokens first
-    branch_match = re.search(
-        r"\b(CSE|ECE|ISE|EEE|MECH|CIVIL|AIML|AIDS|BIOTECH|CHEM)\b",
-        query,
-        re.IGNORECASE,
-    )
-    if not branch_match:
-        # For 2-letter tokens, match case-sensitively or when preceded by branch/course/engineering
-        branch_match = re.search(
-            r"(?:branch|course|dept|engineering|in)\s+([A-Z]{2})\b",
-            query,
-        )
-        if not branch_match:
-            # Match standalone uppercase codes except common words
-            for token in query.split():
-                clean_t = re.sub(r"[^A-Za-z]", "", token)
-                if clean_t in ["CS", "EC", "EE", "ME", "CV", "AI", "AD", "BT", "CH", "IM", "AE", "RO"]:
-                    branch_match = re.search(r"\b" + clean_t + r"\b", query)
-                    break
-    if branch_match:
-        raw_b = branch_match.group(1).upper()
-        # Normalize to standard code
-        branch_map = {
-            "CSE": "CS", "CS": "CS",
-            "ECE": "EC", "EC": "EC",
-            "ISE": "IS", "IS": "IS",
-            "EEE": "EE", "EE": "EE",
-            "MECH": "ME", "ME": "ME",
-            "CIVIL": "CV", "CV": "CV",
-            "AIML": "AI", "AI": "AI",
-            "AIDS": "AD", "AD": "AD",
-            "BIOTECH": "BT", "BT": "BT",
-            "CHEM": "CH", "CH": "CH",
+    # 4. Engineering Branch identification
+    full_branch_map = [
+        (r"\bcomputer\s+science\b", "CS"),
+        (r"\binformation\s+science\b", "IS"),
+        (r"\belectronics\s+(?:and|&)\s+communication\b", "EC"),
+        (r"\belectrical\s+(?:and|&)\s+electronics\b", "EE"),
+        (r"\bmechanical\s+engineering\b", "ME"),
+        (r"\bcivil\s+engineering\b", "CV"),
+        (r"\bartificial\s+intelligence\b", "AI"),
+        (r"\bbiotechnology\b", "BT"),
+        (r"\baeronautical\b", "AE"),
+        (r"\bchemical\s+engineering\b", "CH"),
+    ]
+    detected_branch = None
+    for pattern, b_code in full_branch_map:
+        if re.search(pattern, query, re.IGNORECASE):
+            detected_branch = b_code
+            break
+
+    if not detected_branch:
+        VALID_BRANCH_CODES = {
+            "CS": "CS", "CSE": "CS",
+            "IS": "IS", "ISE": "IS", "IE": "IS",
+            "EC": "EC", "ECE": "EC",
+            "EE": "EE", "EEE": "EE",
+            "ME": "ME", "MECH": "ME",
+            "CV": "CV", "CIVIL": "CV",
+            "AI": "AI", "AIML": "AI",
+            "AD": "AD", "AIDS": "AD",
+            "BT": "BT", "BIOTECH": "BT",
+            "CH": "CH", "CHEM": "CH",
+            "AE": "AE", "RO": "RO",
         }
-        entities["branch"] = branch_map.get(raw_b, raw_b)
+        # A. Match "X branch" / "X course" / "X dept" (e.g. "is branch", "cs course")
+        m1 = re.search(r"\b([a-zA-Z]{2,6})\s+(?:branch|course|dept|engineering)\b", query, re.IGNORECASE)
+        if m1 and m1.group(1).upper() in VALID_BRANCH_CODES:
+            detected_branch = VALID_BRANCH_CODES[m1.group(1).upper()]
+        else:
+            # B. Match "in X" / "for X" (e.g. "in is", "for cs")
+            m2 = re.search(r"(?:branch|course|dept|engineering|in|for)\s+([a-zA-Z]{2,6})\b", query, re.IGNORECASE)
+            if m2 and m2.group(1).upper() in VALID_BRANCH_CODES:
+                detected_branch = VALID_BRANCH_CODES[m2.group(1).upper()]
+            else:
+                # C. Standalone unambiguous acronyms (CSE, ECE, ISE, AIML, etc.)
+                m3 = re.search(r"\b(CSE|ECE|ISE|EEE|MECH|AIML|AIDS|BIOTECH)\b", query, re.IGNORECASE)
+                if m3:
+                    detected_branch = VALID_BRANCH_CODES.get(m3.group(1).upper())
+                else:
+                    # D. Standalone uppercase codes
+                    for token in query.split():
+                        clean_t = re.sub(r"[^A-Za-z]", "", token)
+                        if token == clean_t and clean_t in ["CS", "EC", "EE", "CV", "AD", "BT", "CH", "AE"]:
+                            detected_branch = clean_t
+                            break
+
+    if detected_branch:
+        entities["branch"] = detected_branch
 
     return entities
 
@@ -148,15 +181,21 @@ class ChatbotService:
         )
         fused_documents = retrieval_res["fused_results"]
 
-        # 3. Structured Rank Filtering (if student rank is present)
+        # 3. Structured Numerical Rank Filtering (Point Rank or Range)
         structured_matches = []
-        if final_rank is not None and final_rank > 0:
+        min_rank = extracted_entities.get("min_rank")
+        max_rank = extracted_entities.get("max_rank")
+        has_rank_query = (final_rank is not None and final_rank > 0) or min_rank is not None
+
+        if has_rank_query:
             logger.info(
-                f"Executing structured database filtering for rank {final_rank}, "
-                f"category {final_category}, branch {final_branch}"
+                f"Executing structured database filtering for rank={final_rank}, "
+                f"range={min_rank}-{max_rank}, category={final_category}, branch={final_branch}"
             )
             structured_matches = self.cutoff_service.filter_by_rank(
                 student_rank=final_rank,
+                min_rank=min_rank,
+                max_rank=max_rank,
                 category=final_category,
                 branch=final_branch,
                 counselling_round=counselling_round,
@@ -188,10 +227,17 @@ class ChatbotService:
             if len(SESSION_HISTORIES[session_id]) > 10:
                 SESSION_HISTORIES[session_id] = SESSION_HISTORIES[session_id][-10:]
 
+        # If student rank or range was applied, results MUST strictly be the structured rank matches
+        # Never fall back to arbitrary retrieved documents with lower closing ranks
+        if has_rank_query:
+            final_results = structured_matches
+        else:
+            final_results = [d.get("metadata") for d in fused_documents if d.get("metadata")]
+
         return {
             "answer": generation_res["answer"],
             "evidence_status": generation_res["evidence_status"],
-            "results": structured_matches if structured_matches else [d.get("metadata") for d in fused_documents],
+            "results": final_results,
             "sources": generation_res["sources"],
             "retrieval_metadata": {
                 "dense_results": retrieval_res["metadata"]["dense_count"],

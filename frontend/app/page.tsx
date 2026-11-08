@@ -39,44 +39,44 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans">
-      {/* Top Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 py-3.5 sm:px-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="h-screen max-h-screen overflow-hidden flex flex-col bg-slate-100/80 text-slate-800 font-sans">
+      {/* Fixed Top Header */}
+      <header className="flex-shrink-0 bg-white border-b border-slate-200 z-30 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 py-2.5 sm:px-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-emerald-700 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-xs">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-emerald-700 to-teal-500 flex items-center justify-center text-white font-bold text-xs shadow-xs">
               KCET
             </div>
             <div>
-              <h1 className="text-base font-bold text-slate-900 leading-tight">
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
                 KCET College Information Assistant
               </h1>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] text-slate-500">
                 Hybrid RAG Architecture • Karnataka Engineering Cutoffs
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
               Neon pgvector (768d)
             </span>
-            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-blue-50 text-blue-800 border border-blue-200">
+            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-800 border border-blue-200">
               Gemini 3.5 Flash Lite
             </span>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-purple-50 text-purple-800 border border-purple-200">
-              BM25 + RRF Fusion
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-800 border border-purple-200">
+              BM25 + RRF
             </span>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 flex-1 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Filter Panel / Rank Form */}
-          <div className="lg:col-span-4 xl:col-span-3">
+      {/* Main Content Area (Strictly Fits Screen, No Outer Scroll) */}
+      <main className="flex-1 min-h-0 max-w-7xl w-full mx-auto p-3 sm:px-6 flex flex-col">
+        <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+          {/* Left Column: Fixed Filter Panel with Internal Scroll */}
+          <div className="hidden lg:block lg:col-span-4 xl:col-span-3 h-full min-h-0 overflow-y-auto pr-1">
             <FilterPanel
               filters={filters}
               onFilterChange={setFilters}
@@ -87,8 +87,8 @@ export default function Home() {
             />
           </div>
 
-          {/* Right Column: Chat Interface */}
-          <div className="lg:col-span-8 xl:col-span-9 flex flex-col">
+          {/* Right Column: Chat Interface (Only Messages Scroll) */}
+          <div className="col-span-12 lg:col-span-8 xl:col-span-9 h-full min-h-0 flex flex-col">
             <ChatInterface
               filters={filters}
               activeRank={filters.rank ? parseInt(filters.rank, 10) : null}
@@ -99,11 +99,11 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+      {/* Fixed Bottom Footer */}
+      <footer className="flex-shrink-0 bg-white border-t border-slate-200 py-2 px-4 text-center text-[11px] text-slate-500 z-30">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-1">
           <span>Official KEA KCET 2026 Engineering Provisional Cutoff Records</span>
-          <span className="font-mono text-[11px]">Academic Generative AI Project</span>
+          <span className="font-mono text-[10px] text-slate-400">Academic Hybrid RAG Generative AI Project</span>
         </div>
       </footer>
     </div>
