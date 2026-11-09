@@ -33,6 +33,8 @@ class RetrievalMetadata(BaseModel):
     student_rank_applied: Optional[int] = None
     category_applied: Optional[str] = None
     branch_applied: Optional[str] = None
+    sql_matches: int = 0
+    pipeline_steps: List[str] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):

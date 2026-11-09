@@ -69,6 +69,13 @@ def chat_endpoint(request: ChatRequest):
                     "region": s.get("region", request.seat_region),
                 })
 
+        has_sql = meta.get("sql_matches", 0) > 0 or (student_rank is not None and student_rank > 0)
+        retrieval_method = (
+            "Structured SQL + Hybrid RAG (pgvector + BM25 RRF)"
+            if has_sql
+            else "Hybrid RAG (Dense pgvector + BM25 RRF)"
+        )
+
         return ChatResponse(
             answer=result["answer"],
             evidence_status=result["evidence_status"],
@@ -82,8 +89,10 @@ def chat_endpoint(request: ChatRequest):
                 student_rank_applied=meta.get("student_rank_applied"),
                 category_applied=meta.get("category_applied"),
                 branch_applied=meta.get("branch_applied"),
+                sql_matches=meta.get("sql_matches", 0),
+                pipeline_steps=meta.get("pipeline_steps", []),
             ),
-            retrieval_method="Hybrid (Dense pgvector + BM25 RRF)",
+            retrieval_method=retrieval_method,
             query_type=query_type,
             disclaimer=(
                 "Historical KCET cutoffs for informational purposes only. "

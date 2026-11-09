@@ -17,17 +17,17 @@ interface Props {
 const INITIAL_MESSAGE: Message = {
   id: 'welcome',
   sender: 'assistant',
-  content: `👋 **Welcome to the KCET 2026 Engineering Cutoff Assistant!**
+  content: `👋 **Welcome to the KCET 2026 Engineering Cutoff Advisory Assistant!**
 
-I provide accurate, official Karnataka Examination Authority (KEA) cutoff answers using a **Hybrid RAG architecture** (Dense pgvector + BM25 keyword search fused via Reciprocal Rank Fusion).
+I provide accurate, official Karnataka Examination Authority (KEA) cutoff answers using an academic **Hybrid RAG architecture** combining PostgreSQL pgvector, BM25 keyword search, structured SQL filtering, and Reciprocal Rank Fusion (RRF).
 
-**How I can help you:**
-1. **Factual Cutoffs:** *"What is the GM cutoff for Computer Science at RV College of Engineering?"*
-2. **Rank Eligibility:** *"Can I get BMS College of Engineering in CS with rank 4,500?"*
-3. **Category-wise Cutoffs:** *"Show 2AG and 3AG cutoffs for MS Ramaiah in Information Science."*
-4. **Structured College Recommendations:** Enter your rank in the side panel or ask directly in chat!
+🧪 **RAG Architecture Test Bench (Test Each Subsystem):**
+1. **BM25 Keyword Retrieval:** Exact college codes & acronyms (*"What is the GM cutoff for Computer Science at RV College of Engineering (E005)?"*)
+2. **Dense Semantic Retrieval:** Natural language paraphrases without codes (*"What is the GM cutoff for Mechanical Engineering at the state autonomous public university on IIT model at KR Circle Bangalore?"*)
+3. **Structured SQL Numerical Filtering:** Exact numerical bounds & ranges (*"Give me colleges between 4000 and 5000 for GM in is branch"* or *"Which colleges can I get in CS with rank 2500 in GM?"*)
+4. **LLM Synthesis & Guardrail Reasoning:** Comparative college analysis or domain guardrails (*"Compare BMS College of Engineering and MS Ramaiah for CS GM cutoffs"* or *"What is the MBBS NEET cutoff for Bangalore Medical College?"*)
 
-All cutoffs are verified from official KEA PDF records with exact page citations. How may I assist your engineering counselling planning today?`,
+Select any query from the **RAG Architecture Test Bench** in the left panel, or use the suggestions below!`,
   timestamp: '2026-10-31T12:00:00.000Z',
   retrievalMethod: 'System Initialized',
 };
@@ -40,6 +40,7 @@ export default function ChatInterface({
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentLoadingQuery, setCurrentLoadingQuery] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -71,6 +72,7 @@ export default function ChatInterface({
     };
 
     setMessages((prev) => [...prev, userMsg]);
+    setCurrentLoadingQuery(queryText);
     setIsLoading(true);
 
     try {
@@ -96,6 +98,7 @@ export default function ChatInterface({
         retrievalMethod: response.retrieval_method,
         queryType: response.query_type,
         disclaimer: response.disclaimer,
+        retrievalMetadata: response.retrieval_metadata,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -121,7 +124,12 @@ export default function ChatInterface({
           />
         ))}
 
-        {isLoading && <LoadingIndicator />}
+        {isLoading && (
+          <LoadingIndicator
+            currentQuery={currentLoadingQuery}
+            activeRank={activeRank || (filters.rank ? parseInt(filters.rank, 10) : null)}
+          />
+        )}
 
         {errorMessage && (
           <div className="p-3 my-2 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs flex items-center justify-between">
