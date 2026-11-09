@@ -7,12 +7,48 @@ interface Props {
   isLoading: boolean;
 }
 
-const EXAMPLE_QUERIES = [
-  'What is the CSE cutoff for RV College (E005)?',
-  'Can I get BMS College of Engineering in CS with rank 3500 (GM)?',
-  'Show colleges for rank 8000 in Information Science (2AG)',
-  'What is the cutoff for PES University in Mechanical Engineering?',
-  'What is the medical cutoff for Bangalore Medical College?',
+interface Suggestion {
+  label: string;
+  tag: 'BM25' | 'Semantic' | 'SQL' | 'LLM' | 'Guardrail';
+  query: string;
+}
+
+const TEST_SUGGESTIONS: Suggestion[] = [
+  {
+    tag: 'BM25',
+    label: 'RVCE (E005) CS Cutoff',
+    query: 'What is the GM cutoff for Computer Science at RV College of Engineering (E005)?',
+  },
+  {
+    tag: 'Semantic',
+    label: 'KR Circle IIT-Model (UVCE)',
+    query: 'What is the GM cutoff for Mechanical Engineering at the state autonomous university on IIT model at KR Circle Bangalore?',
+  },
+  {
+    tag: 'SQL',
+    label: 'IS Range 4000-5000 (Exact)',
+    query: 'Give me colleges between 4000 and 5000 for GM in is branch',
+  },
+  {
+    tag: 'SQL',
+    label: 'Rank 2500 in CS',
+    query: 'Which colleges can I get in Computer Science with rank 2500 in GM category?',
+  },
+  {
+    tag: 'SQL',
+    label: 'BIT (E008) 2AG Cutoff',
+    query: 'What is the 2AG cutoff for Computer Science at Bangalore Institute of Technology (E008)?',
+  },
+  {
+    tag: 'LLM',
+    label: 'Compare BMSCE vs MSRIT',
+    query: 'Compare BMS College of Engineering and MS Ramaiah for Computer Science cutoffs in GM category.',
+  },
+  {
+    tag: 'Guardrail',
+    label: 'MBBS Medical Refusal',
+    query: 'What is the MBBS NEET cutoff for Bangalore Medical College?',
+  },
 ];
 
 export default function ChatInput({ onSendMessage, isLoading }: Props) {
@@ -42,18 +78,31 @@ export default function ChatInput({ onSendMessage, isLoading }: Props) {
   return (
     <div className="flex-shrink-0 border-t border-slate-200 bg-white p-2.5 sm:p-3 rounded-b-xl shadow-xs">
       <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] text-slate-500">
-        <span className="shrink-0 font-medium text-slate-600">Suggestions:</span>
-        {EXAMPLE_QUERIES.map((q, idx) => (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => onSendMessage(q)}
-            disabled={isLoading}
-            className="shrink-0 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-600 transition-colors cursor-pointer border border-slate-200 text-left disabled:opacity-50"
-          >
-            {q}
-          </button>
-        ))}
+        <span className="shrink-0 font-medium text-slate-600">RAG Test Bench:</span>
+        {TEST_SUGGESTIONS.map((item, idx) => {
+          let badgeClasses = 'bg-slate-100 text-slate-700 border-slate-200';
+          if (item.tag === 'BM25') badgeClasses = 'bg-purple-100 text-purple-800 border-purple-200';
+          else if (item.tag === 'Semantic') badgeClasses = 'bg-blue-100 text-blue-800 border-blue-200';
+          else if (item.tag === 'SQL') badgeClasses = 'bg-amber-100 text-amber-900 border-amber-200';
+          else if (item.tag === 'LLM') badgeClasses = 'bg-teal-100 text-teal-800 border-teal-200';
+          else if (item.tag === 'Guardrail') badgeClasses = 'bg-rose-100 text-rose-800 border-rose-200';
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onSendMessage(item.query)}
+              disabled={isLoading}
+              title={item.query}
+              className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 hover:bg-emerald-50 hover:text-emerald-900 text-slate-700 transition-colors cursor-pointer border border-slate-200 text-left disabled:opacity-50"
+            >
+              <span className={`text-[9px] font-mono px-1 py-0.2 rounded ${badgeClasses}`}>
+                {item.tag}
+              </span>
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       <form onSubmit={handleSubmit} className="relative flex items-end gap-2">

@@ -234,6 +234,16 @@ class ChatbotService:
         else:
             final_results = [d.get("metadata") for d in fused_documents if d.get("metadata")]
 
+        pipeline_steps = ["Entity & Intent Extraction"]
+        if has_rank_query:
+            pipeline_steps.append("Structured PostgreSQL SQL Filtering")
+        pipeline_steps.extend([
+            "BM25 Inverted Index Search",
+            "Dense Vector Similarity (pgvector 768d)",
+            "Reciprocal Rank Fusion (RRF k=60)",
+            "Gemini 3.5 Flash Lite Synthesis",
+        ])
+
         return {
             "answer": generation_res["answer"],
             "evidence_status": generation_res["evidence_status"],
@@ -246,6 +256,8 @@ class ChatbotService:
                 "student_rank_applied": final_rank,
                 "category_applied": final_category,
                 "branch_applied": final_branch,
+                "sql_matches": len(structured_matches),
+                "pipeline_steps": pipeline_steps,
             },
         }
 

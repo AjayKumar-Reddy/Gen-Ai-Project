@@ -176,12 +176,31 @@ export default function ChatMessage({ message, userRank }: Props) {
 
       <div className="flex-1 bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs p-4 shadow-2xs max-w-3xl">
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 text-[11px]">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-semibold text-slate-800">KCET Advisory AI</span>
             {message.retrievalMethod && (
               <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                 {message.retrievalMethod}
               </span>
+            )}
+            {message.retrievalMetadata && (
+              <div className="hidden sm:inline-flex items-center gap-1 text-[9px] text-slate-500 font-mono">
+                {Boolean(message.retrievalMetadata.sql_matches && message.retrievalMetadata.sql_matches > 0) && (
+                  <span className="px-1.5 py-0.2 bg-amber-50 text-amber-800 rounded border border-amber-200">
+                    ⚡ SQL: {message.retrievalMetadata.sql_matches}
+                  </span>
+                )}
+                {typeof message.retrievalMetadata.bm25_results === 'number' && (
+                  <span className="px-1.5 py-0.2 bg-purple-50 text-purple-800 rounded border border-purple-200">
+                    📖 BM25: {message.retrievalMetadata.bm25_results}
+                  </span>
+                )}
+                {typeof message.retrievalMetadata.dense_results === 'number' && (
+                  <span className="px-1.5 py-0.2 bg-blue-50 text-blue-800 rounded border border-blue-200">
+                    🌐 Dense: {message.retrievalMetadata.dense_results}
+                  </span>
+                )}
+              </div>
             )}
           </div>
           <span
