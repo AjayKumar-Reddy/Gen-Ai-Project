@@ -109,7 +109,10 @@ class GeminiGenerator:
             all_evidence.extend([d.get("metadata", {}) for d in retrieved_documents])
 
         for item in all_evidence:
-            pdf_ref = f"KCET 2026 Round {item.get('counselling_round', 1)} Cutoff PDF"
+            pdf_ref = (
+                f"KCET {item.get('year') or self.settings.DATASET_YEAR} "
+                f"Round {item.get('counselling_round', 1)} Cutoff PDF"
+            )
             page = item.get("page_number")
             key = (pdf_ref, page)
             if key not in seen_sources and page:

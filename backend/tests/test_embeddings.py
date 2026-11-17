@@ -43,11 +43,16 @@ def test_extract_record_metadata():
 
 def test_embedding_service_initialization():
     settings = get_settings()
-    if not settings.GOOGLE_API_KEY:
+    if settings.EMBEDDING_PROVIDER.lower() != "local" and not settings.GOOGLE_API_KEY:
         pytest.skip("GOOGLE_API_KEY not configured.")
     service = EmbeddingService()
     assert service.dimension == 768
-    assert "gemini-embedding-001" in service.model
+    expected = (
+        settings.LOCAL_EMBEDDING_MODEL
+        if settings.EMBEDDING_PROVIDER.lower() == "local"
+        else settings.GEMINI_EMBEDDING_MODEL
+    )
+    assert service.model == expected
 
     # Generate single test query embedding
     vec = service.embed_query("RV College CSE cutoff")

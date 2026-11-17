@@ -123,6 +123,30 @@ def load_records_into_database(
             inserted_count += len(batch)
             logger.info(f"Ingested batch: {inserted_count}/{total_records} records.")
 
+        # 2b. Remove stale rows of this same source/year/round/region whose
+        # (college, course, category) key no longer exists in the new extraction
+        # (e.g. after course names were corrected). Linked documents are
+        # removed by the ON DELETE CASCADE foreign key.
+        new_keys = {(r["college_code"], r["course_name"], r["category"]) for r in unique_records}
+        existing = (
+            db.query(CutoffRecord.id, CutoffRecord.college_code, CutoffRecord.course_name, CutoffRecord.category)
+            .filter(
+                CutoffRecord.source_id == source_id,
+                CutoffRecord.year == year,
+                CutoffRecord.counselling_round == round_no,
+                CutoffRecord.seat_region == region,
+            )
+            .all()
+        )
+        stale_ids = [row.id for row in existing if (row.college_code, row.course_name, row.category) not in new_keys]
+        for i in range(0, len(stale_ids), 1000):
+            db.query(CutoffRecord).filter(CutoffRecord.id.in_(stale_ids[i : i + 1000])).delete(
+                synchronize_session=False
+            )
+        db.commit()
+        if stale_ids:
+            logger.info(f"Removed {len(stale_ids)} stale cutoff records no longer present in the source.")
+
         # 3. Save copy in processed directory
         save_processed_records_to_json(
             unique_records,
@@ -136,6 +160,7 @@ def load_records_into_database(
             "filename": filename,
             "total_records_processed": total_records,
             "inserted_or_updated": inserted_count,
+            "stale_removed": len(stale_ids),
             "colleges": extraction_result["college_count"],
             "courses": extraction_result["course_count"],
         }

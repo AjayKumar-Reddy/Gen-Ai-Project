@@ -47,7 +47,7 @@ FASTAPI BACKEND
 
 ## Key Features
 
-1. **High-Precision PDF Ingestion**: Extracts multi-column KCET cutoff tables (242 colleges, 1,668 courses, 56,610 cutoff combinations across 37 reservation categories) while preserving `NULL` for missing ranks (never 0).
+1. **High-Precision PDF Ingestion**: Extracts multi-column KCET cutoff tables (242 colleges, 1,668 courses, 61,716 cutoff combinations across 37 reservation categories) while preserving `NULL` for missing ranks (never 0).
 2. **Dense Vector Search**: Powered by Google Gemini `gemini-embedding-001` (768 dimensions) stored in Neon PostgreSQL with an HNSW cosine similarity index.
 3. **Sparse BM25 Keyword Search**: In-memory `BM25Okapi` with Karnataka engineering acronym expansion (`RVCE`, `MSRIT`, `BMSCE`, `UVCE`, `CSE`, `ISE`, `ECE`).
 4. **Reciprocal Rank Fusion (RRF)**: Custom, transparent Python implementation ($k=60$) fusing Dense and BM25 candidate ranks.
@@ -61,7 +61,7 @@ FASTAPI BACKEND
 
 | Layer | Technologies |
 | :--- | :--- |
-| **Frontend** | Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS |
+| **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS |
 | **Backend** | Python 3.11, FastAPI, Pydantic v2, Uvicorn |
 | **Python Env** | MiniConda (`kcet-rag`) |
 | **Database** | Neon PostgreSQL with `pgvector` extension (HNSW Cosine Index) |

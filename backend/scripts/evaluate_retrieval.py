@@ -2,7 +2,7 @@
 Comprehensive Retrieval and Generation Evaluation Script.
 Evaluates Dense (pgvector), BM25, and Hybrid (RRF) Retrieval on:
 - Precision@5
-- Recall@5
+- Hit Rate@5 (fraction of queries with >=1 relevant record in the top 5)
 - Mean Reciprocal Rank (MRR)
 - Generation Cutoff Accuracy & Citation Validity
 - Out-of-domain Refusal Rate
@@ -50,14 +50,14 @@ BENCHMARK_QUERIES = [
         "id": "Q04",
         "query": "What is the Information Science cutoff for MS Ramaiah Institute of Technology?",
         "expected_college": "E006",
-        "expected_course": "IE",
+        "expected_course": "IS",
         "category": "GM",
         "is_out_of_domain": False
     },
     {
         "id": "Q05",
         "query": "PES University Bangalore CS cutoff rank",
-        "expected_college": "E007",
+        "expected_college": "E009",
         "expected_course": "CS",
         "category": "GM",
         "is_out_of_domain": False
@@ -65,7 +65,7 @@ BENCHMARK_QUERIES = [
     {
         "id": "Q06",
         "query": "What is the Electronics and Communication cutoff for Dayananda Sagar?",
-        "expected_college": "E009",
+        "expected_college": "E007",
         "expected_course": "EC",
         "category": "GM",
         "is_out_of_domain": False
@@ -73,7 +73,7 @@ BENCHMARK_QUERIES = [
     {
         "id": "Q07",
         "query": "National Institute of Engineering Mysore CSE cutoff",
-        "expected_college": "E021",
+        "expected_college": "E178",
         "expected_course": "CS",
         "category": "GM",
         "is_out_of_domain": False
@@ -89,7 +89,7 @@ BENCHMARK_QUERIES = [
     {
         "id": "Q09",
         "query": "Siddaganga Institute of Technology Tumkur CS cutoff",
-        "expected_college": "E023",
+        "expected_college": "E016",
         "expected_course": "CS",
         "category": "GM",
         "is_out_of_domain": False
@@ -137,7 +137,7 @@ BENCHMARK_QUERIES = [
     {
         "id": "Q15",
         "query": "What is the 3AG cutoff for Dayananda Sagar College of Engineering in CS?",
-        "expected_college": "E009",
+        "expected_college": "E007",
         "expected_course": "CS",
         "category": "3AG",
         "is_out_of_domain": False
@@ -177,16 +177,14 @@ def is_relevant(doc_meta: Dict[str, Any], query_spec: Dict[str, Any]) -> bool:
 
     col_code = doc_meta.get("college_code", "")
     course_code = doc_meta.get("course_code", "")
-    course_name = doc_meta.get("course_name", "").upper()
 
     expected_col = query_spec["expected_college"]
     expected_course = query_spec["expected_course"]
 
     college_match = col_code.upper() == expected_col.upper()
-    course_match = (
-        course_code.upper() == expected_course.upper()
-        or expected_course.upper() in course_name
-    )
+    # Exact branch-code match only. A substring test on the course name is too
+    # loose (e.g. "IE" is a substring of "SCIENCE", so any CS course matched).
+    course_match = course_code.upper() == expected_course.upper()
 
     return college_match and course_match
 
@@ -268,31 +266,47 @@ def run_evaluation():
         hybrid_metrics["r@5"].append(hr)
         hybrid_metrics["mrr"].append(hm)
 
+        def _first(m):
+            return f"rank {round(1 / m)}" if m > 0 else "miss"
+        print(f"  {q['id']}: dense={_first(dm):7s} bm25={_first(bm):7s} hybrid={_first(hm):7s} | {query_text}")
+
     avg_dense = {k: sum(v) / len(v) for k, v in dense_metrics.items()}
     avg_bm25 = {k: sum(v) / len(v) for k, v in bm25_metrics.items()}
     avg_hybrid = {k: sum(v) / len(v) for k, v in hybrid_metrics.items()}
 
-    print(f"\nDense PGVector:  Precision@5: {avg_dense['p@5']:.3f} | Recall@5: {avg_dense['r@5']:.3f} | MRR: {avg_dense['mrr']:.3f}")
-    print(f"BM25 Keyword:   Precision@5: {avg_bm25['p@5']:.3f} | Recall@5: {avg_bm25['r@5']:.3f} | MRR: {avg_bm25['mrr']:.3f}")
-    print(f"Hybrid (RRF):   Precision@5: {avg_hybrid['p@5']:.3f} | Recall@5: {avg_hybrid['r@5']:.3f} | MRR: {avg_hybrid['mrr']:.3f}")
+    print(f"\nDense PGVector:  Precision@5: {avg_dense['p@5']:.3f} | Hit@5: {avg_dense['r@5']:.3f} | MRR: {avg_dense['mrr']:.3f}")
+    print(f"BM25 Keyword:   Precision@5: {avg_bm25['p@5']:.3f} | Hit@5: {avg_bm25['r@5']:.3f} | MRR: {avg_bm25['mrr']:.3f}")
+    print(f"Hybrid (RRF):   Precision@5: {avg_hybrid['p@5']:.3f} | Hit@5: {avg_hybrid['r@5']:.3f} | MRR: {avg_hybrid['mrr']:.3f}")
 
     print(f"\n2. Evaluating Out-of-Domain Refusal Rate across {len(ood_queries)} queries...")
     refusal_success = 0
+    ood_lines = []
     for q in ood_queries:
         out = chatbot.process_query(question=q["query"])
         content_lower = out["answer"].lower()
-        if (
+        refused = (
             "not found" in content_lower
             or "not available" in content_lower
             or "does not contain" in content_lower
             or "cannot answer" in content_lower
             or "engineering cutoffs only" in content_lower
-            or "official kcet" in content_lower
+            or "outside the scope" in content_lower
             or "out of scope" in content_lower
             or out.get("query_type") == "out_of_domain_refusal"
             or "not provide" in content_lower
-        ):
+        )
+        if refused:
             refusal_success += 1
+        snippet = " ".join(out["answer"].split())[:160]
+        ood_lines.append(f"- **{q['id']}** ({'refused' if refused else 'NOT refused'}): {q['query']}  \n  > {snippet}...")
+        print(f"  {q['id']}: {'refused' if refused else 'NOT refused'} | {snippet[:100]}")
+    ood_details = "\n".join(ood_lines)
+
+    session.close()
+    from sqlalchemy import text as _text
+    with SessionLocal() as s2:
+        indexed_docs = s2.execute(_text("select count(*) from documents where embedding is not null")).scalar()
+    bm25_docs = len(bm25_retriever.corpus_docs)
 
     refusal_rate = (refusal_success / len(ood_queries)) * 100
     print(f"Out-of-Domain Refusal Rate: {refusal_rate:.1f}% ({refusal_success}/{len(ood_queries)})")
@@ -301,7 +315,7 @@ def run_evaluation():
     report_content = f"""# KCET Hybrid RAG Architecture Evaluation Report
 
 **Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}  
-**Embedding Model:** `gemini-embedding-001` (768 dimensions)  
+**Embedding Model:** `{EmbeddingService().model}` (768 dimensions)  
 **LLM Generator:** `gemini-3.5-flash-lite` (Temperature 0)  
 **Vector Store:** Neon PostgreSQL (`pgvector` HNSW Cosine Index)  
 **Keyword Index:** `rank-bm25` (In-memory, KCET Acronym Expansion)  
@@ -313,16 +327,18 @@ def run_evaluation():
 
 Evaluated across {len(factual_queries)} domain-specific benchmark test cases representing college acronyms, codes, categories, and branch inquiries.
 
-| Retriever Architecture | Precision@5 | Recall@5 | Mean Reciprocal Rank (MRR) |
+| Retriever Architecture | Precision@5 | Hit@5 | Mean Reciprocal Rank (MRR) |
 | :--- | :---: | :---: | :---: |
 | **Dense Retriever (pgvector)** | `{avg_dense['p@5']:.3f}` | `{avg_dense['r@5']:.3f}` | `{avg_dense['mrr']:.3f}` |
 | **BM25 Keyword Retriever** | `{avg_bm25['p@5']:.3f}` | `{avg_bm25['r@5']:.3f}` | `{avg_bm25['mrr']:.3f}` |
 | **Hybrid Retriever (Dense + BM25 RRF)** | **`{avg_hybrid['p@5']:.3f}`** | **`{avg_hybrid['r@5']:.3f}`** | **`{avg_hybrid['mrr']:.3f}`** |
 
 ### Key Retrieval Observations:
-1. **Keyword Precision with Acronyms:** BM25 handles specific alphanumeric college codes (`E005`, `E001`) and acronyms (`RVCE`, `MSRIT`, `BMSCE`) exceptionally well when token expansion is applied.
-2. **Dense Semantic Generalization:** Dense vector retrieval using Gemini embeddings excels at natural language paraphrasing (e.g., "Information Science" mapping to "IE", "Dayananda Sagar").
-3. **RRF Synergy:** Combining both through Reciprocal Rank Fusion ($k=60$) guarantees that exact entity matches surface at Rank 1 without losing semantic coverage.
+- A retrieved record is relevant when its college code AND branch code exactly match the expected values.
+- Hit@5 = fraction of queries with at least one relevant record in the top 5.
+- Retrieval is run without metadata filters here, so these numbers measure ranking quality alone
+  (the chatbot additionally applies category/branch/college-code filters extracted from the query).
+- Documents indexed: {indexed_docs} (dense) / {bm25_docs} (BM25).
 
 ---
 
@@ -330,8 +346,10 @@ Evaluated across {len(factual_queries)} domain-specific benchmark test cases rep
 
 - **Total Out-of-Domain Queries Tested:** {len(ood_queries)} (e.g. NEET MBBS cutoffs, JEE Advanced ranks, non-KCET queries)
 - **Refusal / Out-of-Scope Detection Rate:** **{refusal_rate:.1f}%**
-- **Hallucination Prevention:** The LLM strictly adhered to the provided retrieval context and refused to invent cutoffs or answer non-Karnataka engineering inquiries.
-- **Source Citation Rate:** 100% of factual cutoff responses contained verified document metadata (PDF page number, college code, branch code, category).
+- Refusal is detected by keyword matching on the generated answer, so this is an approximate measure.
+
+### Out-of-Domain Answers
+{ood_details}
 
 ---
 
@@ -340,7 +358,7 @@ Evaluated across {len(factual_queries)} domain-specific benchmark test cases rep
 ```
 Query -> Entity Extraction -> [ Dense pgvector (top 10) + BM25 (top 10) ]
                             -> Reciprocal Rank Fusion (k=60)
-                            -> Top-5 Evidence Filtering
+                            -> Top-10 fused evidence (+ SQL rank filtering for rank queries)
                             -> Strict Grounded Generation (Gemini 3.5 Flash Lite)
                             -> Response + Source Citations + Disclaimer
 ```

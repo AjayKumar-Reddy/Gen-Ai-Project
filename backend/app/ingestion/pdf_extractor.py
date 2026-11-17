@@ -6,6 +6,7 @@ import pymupdf
 
 from app.ingestion.data_cleaner import (
     clean_rank_value,
+    disambiguate_course_names,
     extract_location,
     map_course_to_code,
     normalize_whitespace,
@@ -50,6 +51,7 @@ def extract_cutoff_pdf(
     total_pages = len(doc)
 
     records: List[Dict[str, Any]] = []
+    course_rows: List[Dict[str, Any]] = []
     colleges_found = set()
     courses_count = 0
     errors: List[str] = []
@@ -151,23 +153,14 @@ def extract_cutoff_pdf(
 
             if len(ranks) == len(CATEGORIES) and curr_code:
                 courses_count += 1
-                course_code, standard_course_name = map_course_to_code(raw_course_name)
-
-                for cat, rk_str in zip(CATEGORIES, ranks):
-                    closing_rank = clean_rank_value(rk_str)
-                    records.append({
-                        "college_code": curr_code,
-                        "college_name": curr_college_name,
-                        "location": curr_location,
-                        "course_code": course_code,
-                        "course_name": standard_course_name,
-                        "category": cat,
-                        "closing_rank": closing_rank,
-                        "year": year,
-                        "counselling_round": counselling_round,
-                        "seat_region": seat_region,
-                        "page_number": pno + 1,
-                    })
+                course_rows.append({
+                    "college_code": curr_code,
+                    "college_name": curr_college_name,
+                    "location": curr_location,
+                    "raw_course_name": raw_course_name,
+                    "ranks": ranks,
+                    "page_number": pno + 1,
+                })
             else:
                 if len(ranks) > 0 and len(ranks) != len(CATEGORIES):
                     msg = (
@@ -176,6 +169,33 @@ def extract_cutoff_pdf(
                     )
                     logger.warning(msg)
                     errors.append(msg)
+
+    # Resolve course codes/names per college so that distinct programmes that
+    # share a branch family never collapse into one (college, course_name) key.
+    raw_names_by_college: Dict[str, List[str]] = {}
+    for row in course_rows:
+        raw_names_by_college.setdefault(row["college_code"], []).append(row["raw_course_name"])
+    name_map = {
+        code: disambiguate_course_names(raws)
+        for code, raws in raw_names_by_college.items()
+    }
+
+    for row in course_rows:
+        course_code, course_name = name_map[row["college_code"]][row["raw_course_name"]]
+        for cat, rk_str in zip(CATEGORIES, row["ranks"]):
+            records.append({
+                "college_code": row["college_code"],
+                "college_name": row["college_name"],
+                "location": row["location"],
+                "course_code": course_code,
+                "course_name": course_name,
+                "category": cat,
+                "closing_rank": clean_rank_value(rk_str),
+                "year": year,
+                "counselling_round": counselling_round,
+                "seat_region": seat_region,
+                "page_number": row["page_number"],
+            })
 
     logger.info(
         f"Extraction complete for '{filename}': {len(colleges_found)} colleges, "

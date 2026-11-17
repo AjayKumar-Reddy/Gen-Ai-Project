@@ -91,19 +91,23 @@ details.
 This paper presents an AI-powered college information chatbot
 based on a Hybrid Retrieval-Augmented Generation (RAG)
 architecture. The official KCET 2026 Round-1 provisional cutoff
-document (69 pages) is parsed into 56,610 structured
-college--course--category records covering 242 colleges and
-37 reservation categories. Each record with a published closing
-rank is converted into a self-contained text document. Dense
-retrieval is implemented using 768-dimensional Gemini embeddings
-stored in PostgreSQL with the pgvector extension, while sparse
-retrieval uses BM25 with domain-specific acronym expansion. The
-two rankings are combined using Reciprocal Rank Fusion (RRF).
+document (69 pages) is parsed into 61,716 structured
+college--course--category records covering 242 colleges,
+1,668 programmes, and 37 reservation categories. Each record with
+a published closing rank is converted into a self-contained text
+document. Dense retrieval uses 768-dimensional embeddings from the
+locally executed BAAI bge-base-en-v1.5 model, stored in PostgreSQL
+with the pgvector extension, while sparse retrieval uses BM25 with
+domain-specific acronym expansion. The two rankings are combined
+using Reciprocal Rank Fusion (RRF).
 Rank-based eligibility questions are additionally answered through
 deterministic SQL filtering over the structured records, so that
 numerical comparisons are not delegated to the language model.
 The retrieved evidence is supplied to Google Gemini to generate
 context-grounded responses with page-level source references.
+On a 15-question retrieval benchmark, hybrid retrieval achieved the
+highest Hit@5 (0.667) and Mean Reciprocal Rank (0.580), and the
+system declined all five out-of-scope questions tested.
 
 The system is designed to help engineering aspirants understand
 published cutoff information. It provides information-based
@@ -587,7 +591,7 @@ and one offline pipeline.
 \node[comp=2.5cm] (E) at (5.22,-5.95)
     {\textbf{Entity Extraction}\\ college code, branch,\\ category, rank / range};
 \node[comp=2.5cm] (D) at (8.40,-5.25)
-    {\textbf{Dense Retriever}\\ Gemini query embedding,\\ pgvector cosine, top-10};
+    {\textbf{Dense Retriever}\\ bge-base query embedding,\\ pgvector cosine, top-10};
 \node[comp=2.5cm] (B) at (8.40,-6.65)
     {\textbf{BM25 Retriever}\\ Okapi BM25 + acronym\\ expansion, top-10};
 \node[comp=1.8cm] (R) at (11.30,-5.95)
@@ -610,7 +614,7 @@ and one offline pipeline.
 \node[comp=2.5cm] (PC) at (7.85,-9.4)
     {\textbf{Prompt Construction}\\ system rules + evidence\\ + last 3 chat turns};
 \node[comp=2.5cm] (G) at (4.75,-9.4)
-    {\textbf{Gemini LLM}\\ gemini-3.5-flash-lite,\\ temperature 0};
+    {\textbf{Gemini LLM}\\ gemini-3.5-flash-lite,\\ grounded prompt};
 \node[comp=2.5cm] (RA) at (1.65,-9.4)
     {\textbf{Response Assembly}\\ answer, page citations,\\ result cards, disclaimer};
 
@@ -631,7 +635,7 @@ and one offline pipeline.
 \draw[layer, fill=gray!10] (13.2,-4.4) rectangle (17.4,-10.3);
 \node[ltitle] at (13.2,-4.4) {Data Layer};
 \node[comp=3.6cm] (D1) at (15.3,-5.35)
-    {\textbf{cutoff\_records} (relational)\\ 56,610 rows, 18,603 with a rank};
+    {\textbf{cutoff\_records} (relational)\\ 61,716 rows, 20,978 with a rank};
 \node[comp=3.6cm] (D2) at (15.3,-6.6)
     {\textbf{documents} (pgvector)\\ 768-d embeddings, HNSW cosine};
 \node[comp=3.6cm] (D3) at (15.3,-7.85)
@@ -656,7 +660,7 @@ and one offline pipeline.
 \node[comp] (I4) at (12.18,-12.05)
     {\textbf{Cleaning}\\ \texttt{-{}-} $\rightarrow$ NULL, course codes};
 \node[comp] (I5) at (15.66,-12.05)
-    {\textbf{Upsert + Embedding}\\ gemini-embedding-001};
+    {\textbf{Upsert + Embedding}\\ bge-base-en-v1.5 (local)};
 \draw[arr] (I1.east) -- (I2.west);
 \draw[arr] (I2.east) -- (I3.west);
 \draw[arr] (I3.east) -- (I4.west);
@@ -732,11 +736,11 @@ Source document pages & 69 \\
 Admission year / counselling round & 2026 / Round 1 \\
 Seat region & Rest of Karnataka \\
 Colleges & 242 \\
-College--course combinations & 1,530 \\
+College--course combinations (programmes) & 1,668 \\
 Reservation categories & 37 \\
-Total college--course--category records & 56,610 \\
-Records with a published closing rank & 18,603 (32.9\%) \\
-Records without a rank (stored as NULL) & 38,007 \\
+Total college--course--category records & 61,716 \\
+Records with a published closing rank & 20,978 (34.0\%) \\
+Records without a rank (stored as NULL) & 40,738 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -762,11 +766,23 @@ During cleaning, missing ranks (\texttt{-{}-}) are stored as NULL and
 never as zero, so that they cannot be mistaken for a valid rank.
 Course names are mapped to standard branch codes (for example,
 \texttt{CS}, \texttt{IS}, \texttt{EC}) using an ordered set of
-regular-expression rules, and the college location is identified
-from a list of Karnataka cities. Each record retains its page
-number for citation. Records are deduplicated on
-(college, course, category, year, round, region) and inserted into
-the \texttt{cutoff\_records} table using batched upserts.
+regular-expression rules, with specialisations (such as Computer
+Science with Data Science) matched before the general branch. The
+PDF renderer frequently splits words across lines (for example,
+``DA TA SCIENCE''), so the rules are matched against a compact form of
+the name with all whitespace removed. When several distinct
+programmes of one college fall into the same branch family (for
+example, ``Computer Engineering'' and ``Computer Science and
+Engineering''), the programme closest to the standard name keeps it
+and the others receive a qualified name. This guarantees that every
+(college, programme, category) key is unique, so no programme's
+cutoffs can overwrite another's during loading.
+
+The college location is identified from a list of Karnataka cities,
+and each record retains its page number for citation. Records are
+inserted into the \texttt{cutoff\_records} table using batched
+upserts, and rows that no longer appear in a re-extracted document
+are removed.
 
 \subsection{Record-Level Document Construction}
 
@@ -791,20 +807,33 @@ Seat Region: Rest of Karnataka \quad Page: 1
 
 A JSON metadata object containing the same fields is stored
 with each document. It is used for metadata filtering and for
-generating source citations. This produces 18,603 retrievable
+generating source citations. This produces 20,978 retrievable
 documents.
 
 \subsection{Indexing}
 \label{sec:index}
 
-\textit{Dense index:} documents are embedded with the Gemini
-\texttt{gemini-embedding-001} model using the
-\texttt{retrieval\_document} task type and an output dimension of
-768. Embeddings are generated in batches of 50 with exponential
-back-off on rate-limit errors, and stored in the \texttt{documents}
-table using pgvector. A Hierarchical Navigable Small World (HNSW)
-index with cosine distance is created for approximate
-nearest-neighbour search.
+\textit{Dense index:} documents are embedded with the
+\texttt{BAAI/bge-base-en-v1.5} model, executed locally through the
+sentence-transformers library on the GPU of the development machine.
+The model produces L2-normalised 768-dimensional vectors. A local
+model was chosen over the hosted Gemini \texttt{gemini-embedding-001}
+model, which the implementation also supports through a configuration
+setting, because the free tier of the hosted API rejected requests
+after roughly one thousand documents per day. Running the model locally
+also removes the dependency on an external API during retrieval. The
+name of the embedding model is stored with each document, so changing
+the model causes affected documents to be re-embedded.
+
+Vectors are written to the \texttt{documents} table with a binary
+\texttt{COPY}, which transmits each vector as 4-byte floats rather
+than text. A Hierarchical Navigable Small World (HNSW) index with
+cosine distance is built after the bulk load for approximate
+nearest-neighbour search. Because the database's free tier throttles
+bulk writes, the current deployment embeds all records of the five
+most frequently used categories (GM, GMK, GMR, 2AG, and 3BG) and a
+subset of the remaining categories, for a total of 11,426 documents.
+The BM25 index covers all 20,978 documents.
 
 \textit{Sparse index:} at server start-up, the same document text
 is tokenised and loaded into an in-memory \texttt{BM25Okapi} index
@@ -839,9 +868,10 @@ appended to form an enriched query $q'$.
 
 \subsection{Dense Retrieval}
 
-The enriched query is embedded using the
-\texttt{retrieval\_query} task type. Documents satisfying the
-metadata filter $F$ are ranked by cosine similarity,
+The enriched query is embedded with the same model, prefixed with
+the query instruction recommended for bge models (``Represent this
+sentence for searching relevant passages:''). Documents satisfying
+the metadata filter $F$ are ranked by cosine similarity,
 \begin{equation}
 \mathrm{sim}(q', d) = 1 - d_{\cos}(\mathbf{e}_{q'}, \mathbf{e}_d)
 = \frac{\mathbf{e}_{q'} \cdot \mathbf{e}_d}
@@ -909,15 +939,19 @@ Otherwise, a prompt is constructed from:
 \begin{itemize}
     \item a system prompt instructing the model to use only the
     supplied evidence, to state the correct rank-eligibility rule,
-    to cite pages, and to end with a disclaimer that past cutoffs
-    are not an admission guarantee;
+    to cite pages, to decline questions outside the scope of KCET
+    engineering cutoffs, and to end with a disclaimer that past
+    cutoffs are not an admission guarantee;
     \item the structured records $Q$ (up to 15);
     \item the fused evidence $H$ (up to 10); and
     \item the last three question--answer turns of the session.
 \end{itemize}
 
-The prompt is sent to Gemini (\texttt{gemini-3.5-flash-lite})
-with temperature~0. Source references are not taken from the
+The prompt is sent to Gemini (\texttt{gemini-3.5-flash-lite}).
+This model uses fixed sampling settings, so the temperature
+parameter has no effect; factual consistency therefore relies on
+the grounded prompt and on the deterministic SQL results rather than
+on decoding settings. Source references are not taken from the
 generated text. Instead, they are built from the page-number
 metadata of the evidence records, which guarantees that every
 listed reference points to a page of the source document. For
@@ -935,7 +969,7 @@ SQL matches $Q$; otherwise they are the records in $H$.
 \node[fcstep] (pr) at (-1.2,-2.6)
     {\textbf{3.} Parameter resolution (default GM), metadata filter $F$, query enrichment $q'$};
 \node[fcstep=1.8cm] (dn) at (-2.25,-4.0)
-    {\textbf{4a.} Dense search (pgvector, top-10)};
+    {\textbf{4a.} Dense search (bge, pgvector, top-10)};
 \node[fcstep=1.8cm] (bm) at (-0.15,-4.0)
     {\textbf{4b.} BM25 search (top-10)};
 \node[fcstep] (rrf) at (-1.2,-5.3)
@@ -950,7 +984,7 @@ SQL matches $Q$; otherwise they are the records in $H$.
 \node[fcstep] (pc) at (-1.2,-9.6)
     {\textbf{8.} Prompt: system rules + $Q$ + $H$ + last 3 turns};
 \node[fcstep] (gen) at (-1.2,-10.8)
-    {\textbf{9.} Gemini generation (temperature 0)};
+    {\textbf{9.} Gemini generation (grounded prompt)};
 \node[fcstep] (out) at (-1.2,-12.0)
     {\textbf{10.} Response: answer, page citations, result cards, disclaimer};
 
@@ -1031,10 +1065,10 @@ Backend API & Python, FastAPI, Pydantic v2, Uvicorn \\
 PDF extraction & PyMuPDF with a custom token-stream parser \\
 Database & Neon PostgreSQL with pgvector (HNSW, cosine) \\
 ORM & SQLAlchemy \\
-Embeddings & Gemini \texttt{gemini-embedding-001}, 768-d \\
+Embeddings & BAAI \texttt{bge-base-en-v1.5} (sentence-transformers, local), 768-d \\
 Sparse retrieval & rank-bm25 (\texttt{BM25Okapi}) \\
 Fusion & Custom RRF implementation, $k=60$ \\
-LLM & Gemini \texttt{gemini-3.5-flash-lite}, temperature 0, via LangChain \\
+LLM & Gemini \texttt{gemini-3.5-flash-lite} via LangChain \\
 Testing & Pytest, HTTPX \\
 \bottomrule
 \end{tabularx}
@@ -1083,24 +1117,58 @@ where $\mathrm{rank}_i$ is the position of the first relevant
 record for query $i$, and the term is zero if no relevant record
 is retrieved.
 
-% Results table: uncomment after re-running scripts/evaluate_retrieval.py
-% with verified ground-truth college codes.
-%
-% \begin{table}[!t]
-% \centering
-% \caption{Retrieval Results on the 15-Query Benchmark ($K=5$)}
-% \label{tab:results}
-% \footnotesize
-% \begin{tabular}{@{}lccc@{}}
-% \toprule
-% \textbf{Retriever} & \textbf{P@5} & \textbf{Hit@5} & \textbf{MRR} \\
-% \midrule
-% Dense (pgvector) & -- & -- & -- \\
-% BM25             & -- & -- & -- \\
-% Hybrid (RRF)     & -- & -- & -- \\
-% \bottomrule
-% \end{tabular}
-% \end{table}
+\subsection{Retrieval Results}
+
+Table~\ref{tab:results} reports the results. Each retriever returns
+its top 10 records and the fused list is truncated to 10 before
+scoring at $K=5$. In this benchmark the retrievers are run without the
+metadata filters that the chatbot derives from the question, so the
+results measure ranking quality alone and are a lower bound for the
+filtered pipeline.
+
+\begin{table}[!t]
+\centering
+\caption{Retrieval Results on the 15-Question Benchmark ($K=5$)}
+\label{tab:results}
+\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Retriever} & \textbf{P@5} & \textbf{Hit@5} & \textbf{MRR} \\
+\midrule
+Dense (bge-base, pgvector) & 0.320 & 0.400 & 0.306 \\
+BM25 (Okapi)               & \textbf{0.493} & 0.600 & 0.556 \\
+Hybrid (RRF, $k=60$)       & 0.427 & \textbf{0.667} & \textbf{0.580} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Hybrid retrieval achieved the highest Hit@5 and MRR. The two
+retrievers fail on different questions: dense retrieval alone found
+the correct record for PES University and Dayananda Sagar, whose
+questions BM25 missed, while BM25 alone succeeded on questions that
+contain college codes (such as E001 and E003), reservation categories,
+or acronyms (RVCE), which dense retrieval missed. RRF recovers most of
+these complementary successes. BM25 obtained the highest
+Precision@5, because fusion also admits some less relevant records
+retrieved by the dense model. Dense retrieval was the weakest single
+method, which is consistent with the BEIR finding that BM25 remains a
+strong baseline for entity-heavy queries \cite{BEIR2021}, and is
+partly explained by incomplete embedding coverage: the 3AG question,
+for example, refers to a category that is not fully embedded. Four
+questions were missed by all three methods, indicating that unfiltered
+ranking alone is insufficient for some college names and that the
+metadata filters used by the chatbot are an important part of the
+pipeline.
+
+\subsection{Out-of-Domain Handling}
+
+The five out-of-domain questions (a NEET medical cutoff, a JEE
+Advanced rank, a CAT percentile, an engineering cutoff for another
+state, and a general-knowledge question) were passed through the full
+chatbot pipeline. All five (100\%) were declined with a statement that
+the question is outside the scope of the assistant. Refusals were
+detected by matching phrases in the generated answer, so this is an
+approximate measure on a small sample.
 
 \subsection{Response Evaluation}
 
@@ -1125,9 +1193,9 @@ Generated responses are evaluated using the following criteria:
 \end{itemize}
 
 RAGAS \cite{RAGAS2023} and ARES \cite{ARES2024} provide
-established approaches for measuring these aspects of
-retrieval-augmented generation. For rank-eligibility questions,
-the SQL results can also be checked exactly against the source
+established approaches for measuring faithfulness and relevance;
+applying them is left to future work. For rank-eligibility
+questions, the SQL results can be checked exactly against the source
 document, because the eligibility rule is deterministic.
 
 % ------------------------------------------------
@@ -1153,8 +1221,13 @@ document, because the eligibility rule is deterministic.
     \item Conversation history is stored in server memory and is
     lost when the server restarts.
 
-    \item Mapping course names to standard branch codes may merge
-    closely related specialisations under one code.
+    \item The dense index currently covers 11,426 of the 20,978
+    documents (all records of the five main categories); questions
+    about other categories rely mainly on BM25.
+
+    \item The retrieval benchmark contains only 15 questions, so the
+    differences between retrievers are indicative rather than
+    statistically conclusive.
 \end{itemize}
 
 % ------------------------------------------------
@@ -1174,15 +1247,17 @@ fuses the two rankings using Reciprocal Rank Fusion, and uses
 deterministic SQL filtering for rank-eligibility queries. The
 retrieved evidence is supplied to Google Gemini to generate
 natural-language responses, while source references are derived
-from record metadata.
+from record metadata. On a 15-question benchmark, hybrid retrieval
+outperformed both individual retrievers in Hit@5 and MRR, and the
+system declined all tested out-of-scope questions.
 
 The literature review establishes the relevance
 of RAG, hybrid information retrieval, rank fusion,
 and educational chatbot systems to the proposed
 architecture.
 
-Future work includes adding cutoff documents from multiple years
-and counselling rounds, replacing rule-based entity extraction with
+Future work includes embedding the remaining categories, adding
+cutoff documents from multiple years and counselling rounds, replacing rule-based entity extraction with
 a learned or LLM-based parser, adding a cross-encoder reranker,
 reporting retrieval results on a larger verified benchmark, and
 conducting a user study with KCET aspirants.
