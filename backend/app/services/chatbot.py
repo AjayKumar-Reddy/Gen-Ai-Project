@@ -229,7 +229,9 @@ class ChatbotService:
 
         # If student rank or range was applied, results MUST strictly be the structured rank matches
         # Never fall back to arbitrary retrieved documents with lower closing ranks
-        if has_rank_query:
+        if generation_res["evidence_status"] == "out_of_scope":
+            final_results = []
+        elif has_rank_query:
             final_results = structured_matches
         else:
             final_results = [d.get("metadata") for d in fused_documents if d.get("metadata")]

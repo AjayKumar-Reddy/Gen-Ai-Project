@@ -128,7 +128,11 @@ def get_stats(db: Session = Depends(get_db)):
         stats = service.get_dataset_statistics()
         stats["total_cutoff_records"] = stats.get("total_cutoff_combinations", 0)
         stats["total_colleges"] = stats.get("college_count", 0)
-        stats["embedding_model"] = settings.GEMINI_EMBEDDING_MODEL
+        stats["embedding_model"] = (
+            settings.LOCAL_EMBEDDING_MODEL
+            if settings.EMBEDDING_PROVIDER.lower() == "local"
+            else settings.GEMINI_EMBEDDING_MODEL
+        )
         stats["llm_model"] = settings.GEMINI_CHAT_MODEL
         stats["pgvector_dimension"] = settings.EMBEDDING_DIMENSION
         return StatsResponse(**stats)

@@ -1,10 +1,15 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KCET College Assistant | Engineering Cutoff Advisor",
+  title: "KCET Cutoff Assistant",
   description:
-    "AI-powered KCET College Information Assistant for Engineering Aspirants using Hybrid RAG (Dense PGVector + BM25 + RRF)",
+    "Ask questions about KCET 2026 engineering cutoff ranks. Answers are grounded in the official KEA Round 1 cutoff document.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -14,9 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className="h-full overflow-hidden flex flex-col font-sans bg-slate-100 text-slate-800 antialiased">
-        {children}
-      </body>
+      <body className="h-full overflow-hidden">{children}</body>
     </html>
   );
 }

@@ -59,7 +59,7 @@ class StatsResponse(BaseModel):
     college_count: int
     total_cutoff_records: Optional[int] = None
     total_colleges: Optional[int] = None
-    embedding_model: Optional[str] = "gemini-embedding-001"
+    embedding_model: Optional[str] = None
     llm_model: Optional[str] = "gemini-3.5-flash-lite"
     pgvector_dimension: Optional[int] = 768
     available_categories: List[str] = Field(default_factory=list)

@@ -1,226 +1,105 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Message } from '../lib/types';
+import React from 'react';
+import { ChatRequest, Message } from '../lib/types';
 import CollegeResults from './CollegeResults';
 import SourceReferences from './SourceReferences';
+import Markdown from './Markdown';
+import { AlertIcon, RetryIcon } from './Icons';
 
 interface Props {
   message: Message;
-  userRank?: number | null;
+  onRetry?: (req: ChatRequest, messageId: string) => void;
+  retryDisabled?: boolean;
 }
 
-export default function ChatMessage({ message, userRank }: Props) {
-  const isUser = message.sender === 'user';
-  const [formattedTime, setFormattedTime] = useState<string>('');
+function RetrievalLine({ message }: { message: Message }) {
+  const m = message.retrievalMetadata;
+  if (!m) return null;
+  const chips: { label: string; tone: string }[] = [];
+  if (m.sql_matches) chips.push({ label: `SQL filter · ${m.sql_matches}`, tone: 'bg-emerald-50 text-emerald-700 ring-emerald-200' });
+  chips.push(
+    { label: `BM25 · ${m.bm25_results ?? 0}`, tone: 'bg-violet-50 text-violet-700 ring-violet-200' },
+    { label: `Dense · ${m.dense_results ?? 0}`, tone: 'bg-blue-50 text-blue-700 ring-blue-200' },
+    { label: `Fused · ${m.hybrid_results ?? 0}`, tone: 'bg-slate-50 text-slate-600 ring-slate-200' }
+  );
+  const filters: string[] = [];
+  if (m.category_applied) filters.push(m.category_applied);
+  if (m.branch_applied) filters.push(m.branch_applied);
+  if (m.student_rank_applied) filters.push(`rank ${m.student_rank_applied.toLocaleString('en-IN')}`);
 
-  useEffect(() => {
-    try {
-      const date = new Date(message.timestamp);
-      if (!isNaN(date.getTime())) {
-        setFormattedTime(
-          date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        );
-      }
-    } catch {
-      setFormattedTime('');
-    }
-  }, [message.timestamp]);
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[11px] tabular">
+      <span className="text-muted mr-1">Retrieved</span>
+      {chips.map((c) => (
+        <span key={c.label} className={`rounded-full px-2 py-0.5 font-medium ring-1 ring-inset ${c.tone}`}>
+          {c.label}
+        </span>
+      ))}
+      {filters.length > 0 && (
+        <span className="text-muted ml-2">
+          Filters: <span className="font-medium text-ink-2">{filters.join(', ')}</span>
+        </span>
+      )}
+    </div>
+  );
+}
 
-  if (isUser) {
+export default function ChatMessage({ message, onRetry, retryDisabled }: Props) {
+  if (message.sender === 'user') {
     return (
-      <div className="flex justify-end my-2">
-        <div className="max-w-2xl bg-emerald-700 text-white rounded-2xl rounded-tr-xs px-4 py-2.5 shadow-xs">
-          <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
-          <div
-            suppressHydrationWarning
-            className="mt-1 text-[10px] text-emerald-200/80 text-right min-h-[14px]"
-          >
-            {formattedTime}
-          </div>
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[15px] text-white leading-relaxed whitespace-pre-wrap shadow-sm">
+          {message.content}
         </div>
       </div>
     );
   }
 
-  // Format assistant markdown text with bolding, lists, and headings
-  const renderFormattedText = (text: string) => {
-    // Check if the message contains a markdown table
-    const lines = text.split('\n');
-    const renderedElements: React.ReactNode[] = [];
-    let tableBuffer: string[] = [];
+  if (message.failedQuestion) {
+    const failed = message.failedQuestion;
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+        <AlertIcon size={18} className="text-warn shrink-0 mt-0.5" />
+        <div className="flex-1 text-sm text-ink-2">
+          <p className="font-medium text-ink">No answer</p>
+          <p className="mt-0.5">{message.content}</p>
+        </div>
+        {onRetry && (
+          <button
+            type="button"
+            disabled={retryDisabled}
+            onClick={() => onRetry(failed, message.id)}
+            className="shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-line-strong bg-surface text-sm text-ink hover:bg-canvas disabled:opacity-50"
+          >
+            <RetryIcon />
+            Retry
+          </button>
+        )}
+      </div>
+    );
+  }
 
-    const flushTable = (keyPrefix: string) => {
-      if (tableBuffer.length === 0) return;
-      const rows = tableBuffer
-        .filter((l) => !l.trim().match(/^\|(?:\s*:?-+:?\s*\|)+$/)) // ignore separator row
-        .map((l) =>
-          l
-            .split('|')
-            .slice(1, -1)
-            .map((cell) => cell.trim())
-        );
-
-      if (rows.length > 0) {
-        const header = rows[0];
-        const bodyRows = rows.slice(1);
-        renderedElements.push(
-          <div key={keyPrefix} className="my-3 overflow-x-auto rounded-lg border border-slate-200 text-xs">
-            <table className="w-full text-left divide-y divide-slate-200">
-              <thead className="bg-slate-50 text-[11px] font-semibold text-slate-700">
-                <tr>
-                  {header.map((h, i) => (
-                    <th key={i} className="px-3 py-2">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {bodyRows.map((r, ri) => (
-                  <tr key={ri} className="hover:bg-slate-50/60">
-                    {r.map((cell, ci) => (
-                      <td key={ci} className="px-3 py-2 text-slate-700 font-mono text-[11px]">
-                        {cell}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-      }
-      tableBuffer = [];
-    };
-
-    lines.forEach((line, idx) => {
-      const trimmed = line.trim();
-
-      // Check if table row
-      if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-        tableBuffer.push(trimmed);
-        return;
-      }
-
-      // If we were buffering a table and now hit a non-table line, flush it
-      if (tableBuffer.length > 0) {
-        flushTable(`table-${idx}`);
-      }
-
-      if (!trimmed) {
-        renderedElements.push(<div key={`sp-${idx}`} className="h-1.5" />);
-        return;
-      }
-
-      // Headings
-      if (trimmed.startsWith('### ')) {
-        const headingText = trimmed.replace(/^###\s+/, '');
-        renderedElements.push(
-          <h4 key={`h3-${idx}`} className="text-xs font-bold text-slate-900 mt-2 mb-1 flex items-center gap-1.5">
-            <span>{headingText}</span>
-          </h4>
-        );
-        return;
-      }
-
-      if (trimmed.startsWith('## ')) {
-        const headingText = trimmed.replace(/^##\s+/, '');
-        renderedElements.push(
-          <h3 key={`h2-${idx}`} className="text-sm font-bold text-slate-900 mt-2 mb-1">
-            {headingText}
-          </h3>
-        );
-        return;
-      }
-
-      // Bullet items
-      if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-        const bulletText = trimmed.replace(/^[-*]\s+/, '');
-        renderedElements.push(
-          <div key={`b-${idx}`} className="flex items-start gap-2 pl-2 text-xs sm:text-sm text-slate-700 leading-relaxed">
-            <span className="text-emerald-600 mt-1 text-xs shrink-0">•</span>
-            <span dangerouslySetInnerHTML={{ __html: formatInline(bulletText) }} />
-          </div>
-        );
-        return;
-      }
-
-      // Standard paragraph
-      renderedElements.push(
-        <p
-          key={`p-${idx}`}
-          className="text-xs sm:text-sm text-slate-800 leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }}
-        />
-      );
-    });
-
-    if (tableBuffer.length > 0) {
-      flushTable('table-end');
-    }
-
-    return <div className="space-y-2">{renderedElements}</div>;
-  };
-
-  const formatInline = (str: string) => {
-    // Bold: **text**
-    return str.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-slate-900">$1</strong>');
-  };
+  const rank = message.retrievalMetadata?.student_rank_applied ?? null;
+  // The results table is for SQL eligibility/range queries. For single lookups the
+  // retrieved records are already listed under "source records".
+  const isFilterQuery = (message.retrievalMetadata?.sql_matches ?? 0) > 0 || (rank != null && rank > 0);
+  const showResults =
+    isFilterQuery && (message.colleges?.length ?? 0) > 0 && message.evidenceStatus !== 'insufficient_evidence';
 
   return (
-    <div className="flex items-start gap-3 my-3">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-800 text-white font-bold text-xs shadow-xs mt-0.5">
-        KC
+    <article className="relative rounded-xl border border-line bg-surface px-5 py-4 pl-6 shadow-[0_1px_3px_rgba(16,24,40,0.06)] overflow-hidden">
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-accent" />
+      <div className="flex items-center gap-2 mb-2.5">
+        <span className="h-6 w-6 rounded-md bg-accent-soft text-blue-700 text-xs font-bold inline-flex items-center justify-center ring-1 ring-inset ring-accent-line">
+          K
+        </span>
+        <span className="text-sm font-semibold text-ink">Answer</span>
       </div>
-
-      <div className="flex-1 bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs p-4 shadow-2xs max-w-3xl">
-        <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 text-[11px]">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-semibold text-slate-800">KCET Advisory AI</span>
-            {message.retrievalMethod && (
-              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                {message.retrievalMethod}
-              </span>
-            )}
-            {message.retrievalMetadata && (
-              <div className="hidden sm:inline-flex items-center gap-1 text-[9px] text-slate-500 font-mono">
-                {Boolean(message.retrievalMetadata.sql_matches && message.retrievalMetadata.sql_matches > 0) && (
-                  <span className="px-1.5 py-0.2 bg-amber-50 text-amber-800 rounded border border-amber-200">
-                    ⚡ SQL: {message.retrievalMetadata.sql_matches}
-                  </span>
-                )}
-                {typeof message.retrievalMetadata.bm25_results === 'number' && (
-                  <span className="px-1.5 py-0.2 bg-purple-50 text-purple-800 rounded border border-purple-200">
-                    📖 BM25: {message.retrievalMetadata.bm25_results}
-                  </span>
-                )}
-                {typeof message.retrievalMetadata.dense_results === 'number' && (
-                  <span className="px-1.5 py-0.2 bg-blue-50 text-blue-800 rounded border border-blue-200">
-                    🌐 Dense: {message.retrievalMetadata.dense_results}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <span
-            suppressHydrationWarning
-            className="text-slate-400 font-mono text-[10px] min-h-[14px]"
-          >
-            {formattedTime}
-          </span>
-        </div>
-
-        {renderFormattedText(message.content)}
-
-        {message.colleges && message.colleges.length > 0 && (
-          <CollegeResults colleges={message.colleges} userRank={userRank} />
-        )}
-
-        {message.sources && message.sources.length > 0 && (
-          <SourceReferences sources={message.sources} disclaimer={message.disclaimer} />
-        )}
-      </div>
-    </div>
+      <Markdown text={message.content} />
+      {showResults && <CollegeResults colleges={message.colleges!} rank={rank} />}
+      {message.sources && <SourceReferences sources={message.sources} />}
+      <RetrievalLine message={message} />
+    </article>
   );
 }

@@ -5,7 +5,9 @@ from pydantic import BaseModel, Field, model_validator
 class ChatRequest(BaseModel):
     question: Optional[str] = Field(None, description="Student's natural language question regarding cutoffs.")
     student_rank: Optional[int] = Field(None, description="Optional KCET engineering rank.")
-    category: Optional[str] = Field("GM", description="Reservation category (default: GM).")
+    # No default here: if the client does not send a category, the chatbot uses the
+    # category mentioned in the question, and only then falls back to GM.
+    category: Optional[str] = Field(None, description="Reservation category (falls back to the one in the question, then GM).")
     branch: Optional[str] = Field(None, description="Preferred engineering branch (e.g. CS, EC, ME).")
     round: int = Field(1, description="Counselling round (default: 1).")
     seat_region: str = Field("Rest of Karnataka", description="Seat region.")
