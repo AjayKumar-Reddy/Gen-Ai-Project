@@ -1,176 +1,116 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CollegeOption } from '../lib/types';
+import { cleanCollegeName, cleanCourseName, formatRank } from '../lib/format';
 
 interface Props {
-  colleges?: CollegeOption[];
-  userRank?: number | null;
+  colleges: CollegeOption[];
+  /** Rank the SQL filter used, if any. Enables the "margin" column. */
+  rank?: number | null;
 }
 
-export function cleanCollegeName(name: string): string {
-  if (!name) return '';
-  let cleaned = name
-    .replace(/\bPOST\s+BOX\s+NO.*$/i, '')
-    .replace(/\b(P\.?B\.?\s*NO|PBNO).*$/i, '')
-    .replace(/\b(VIDYA\s+SOUDHA|K\.?R\.?\s*ROAD|SHAVIGE\s+MALLESHWARA).*$/i, '')
-    .replace(/\b(JSS\s+TECHNICAL|UNIVERSITY\s+HOUSE|CAMPUS|GNANAGANGOTHRI).*$/i, '')
-    .replace(/\b(R\.?V\.?\s*VIDYANIKETAN|MYSORE\s+ROAD).*$/i, '')
-    .replace(/\b(Constituent\s+College.*)\)/i, '')
-    .replace(/\b(A\s+State\s+Autonomous\s+Public\s+University.*)\)/i, '')
-    .replace(/\s*,\s*,\s*/g, ', ')
-    .trim();
+const PREVIEW_ROWS = 8;
 
-  // Normalize (AUTONOMOUS) to (Autonomous)
-  cleaned = cleaned.replace(/\(AUTONOMOUS\)/gi, '(Autonomous)');
-  // Strip trailing punctuation
-  cleaned = cleaned.replace(/[,-\s\.]+$/, '').trim();
-  return cleaned || name;
-}
+export default function CollegeResults({ colleges, rank }: Props) {
+  const [expanded, setExpanded] = useState(false);
+  const [desc, setDesc] = useState(false);
 
-export function cleanCourseName(code: string, name: string): string {
-  if (!name) return code || '';
-  let cleaned = name.trim();
-  // Fix typos like INSTRUMENTATIO N -> INSTRUMENTATION
-  cleaned = cleaned.replace(/INSTRUMENTATIO\s+N/gi, 'INSTRUMENTATION');
-  cleaned = cleaned.replace(/MATHAMATICS/gi, 'MATHEMATICS');
-  return cleaned;
-}
-
-export default function CollegeResults({ colleges = [], userRank }: Props) {
-  const [filterQuery, setFilterQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'rank_asc' | 'rank_desc'>('rank_asc');
-
-  if (!colleges || colleges.length === 0) {
-    return null;
-  }
-
-  // Filter out ineligible colleges (closing_rank < userRank) when userRank is specified
-  const eligibleColleges = colleges.filter((c) => {
-    if (userRank != null && userRank > 0) {
-      return c.closing_rank >= userRank;
-    }
-    return true;
-  });
-
-  const filtered = eligibleColleges
-    .filter((c) => {
-      if (!filterQuery) return true;
-      const q = filterQuery.toLowerCase();
-      return (
-        c.college_name.toLowerCase().includes(q) ||
-        c.college_code.toLowerCase().includes(q) ||
-        c.course_name.toLowerCase().includes(q) ||
-        (c.location && c.location.toLowerCase().includes(q))
-      );
-    })
-    .sort((a, b) => {
-      if (sortBy === 'rank_asc') return a.closing_rank - b.closing_rank;
-      return b.closing_rank - a.closing_rank;
+  const rows = useMemo(() => {
+    // De-duplicate identical records (the same record can come from several retrievers).
+    const seen = new Set<string>();
+    const unique = colleges.filter((c) => {
+      const k = `${c.college_code}|${c.course_name}|${c.category}`;
+      if (seen.has(k) || !c.closing_rank) return false;
+      seen.add(k);
+      return true;
     });
+    return unique.sort((a, b) => (desc ? b.closing_rank - a.closing_rank : a.closing_rank - b.closing_rank));
+  }, [colleges, desc]);
 
-  if (filtered.length === 0 && eligibleColleges.length === 0) {
-    return null;
-  }
+  if (rows.length === 0) return null;
+
+  const visible = expanded ? rows : rows.slice(0, PREVIEW_ROWS);
+  const hasRank = rank != null && rank > 0;
 
   return (
-    <div className="mt-3 border border-slate-200/90 rounded-xl bg-white shadow-xs overflow-hidden">
-      {/* Header Bar */}
-      <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-700 text-white font-bold text-xs shadow-2xs">
-            {filtered.length}
-          </span>
-          <h4 className="text-xs font-semibold text-slate-900">
-            {userRank != null
-              ? `Eligible College Options (Closing Rank ≥ ${userRank.toLocaleString()})`
-              : 'Verified College Cutoff Options'}
-          </h4>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <input
-            type="text"
-            placeholder="Search in list..."
-            value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
-            className="px-2.5 py-1 border border-slate-200 rounded-md text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 w-28 sm:w-36"
-          />
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-2 py-1 border border-slate-200 rounded-md text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
-            <option value="rank_asc">Cutoff: Low to High</option>
-            <option value="rank_desc">Cutoff: High to Low</option>
-          </select>
-        </div>
+    <div className="mt-5">
+      <div className="flex items-baseline justify-between mb-2">
+        <h4 className="text-sm font-semibold text-ink">
+          Matching programmes
+          <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 tabular">{rows.length}</span>
+        </h4>
+        {hasRank && (
+          <span className="text-xs text-muted tabular">Closing rank ≥ {formatRank(rank)}</span>
+        )}
       </div>
 
-      {/* Card List */}
-      <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
-        {filtered.map((item, index) => {
-          const margin = userRank != null ? item.closing_rank - userRank : null;
-          const displayCollege = cleanCollegeName(item.college_name);
-          const displayCourse = cleanCourseName(item.course_code, item.course_name);
-
-          return (
-            <div
-              key={`${item.college_code}-${item.course_code}-${item.category}-${index}`}
-              className="p-3 hover:bg-slate-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-            >
-              <div className="space-y-1 flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 shrink-0">
-                    {item.college_code}
+      <div className="overflow-x-auto scroll-thin border border-line rounded-lg">
+        <table className="w-full text-sm tabular">
+          <thead>
+            <tr className="bg-blue-50/70 text-left text-xs text-blue-900/70">
+              <th className="px-3 py-2 font-medium">College</th>
+              <th className="px-3 py-2 font-medium">Programme</th>
+              <th className="px-3 py-2 font-medium">Cat.</th>
+              <th className="px-3 py-2 font-medium text-right whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() => setDesc(!desc)}
+                  className="inline-flex items-center gap-1 hover:text-ink"
+                  aria-label="Sort by closing rank"
+                >
+                  Closing rank <span aria-hidden>{desc ? '↓' : '↑'}</span>
+                </button>
+              </th>
+              {hasRank && <th className="px-3 py-2 font-medium text-right">Margin</th>}
+              <th className="px-3 py-2 font-medium text-right">Page</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((c, i) => (
+              <tr key={`${c.college_code}-${c.course_name}-${c.category}-${i}`} className="border-t border-line align-top hover:bg-slate-50/70 transition-colors">
+                <td className="px-3 py-2.5 min-w-[190px]">
+                  <div className="text-ink leading-snug" title={c.college_name}>
+                    {cleanCollegeName(c.college_name)}
+                  </div>
+                  <div className="text-xs text-muted mt-0.5">
+                    <span className="font-mono">{c.college_code}</span>
+                    {c.location && c.location !== 'Karnataka' && <> · {c.location}</>}
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 min-w-[130px]">
+                  <div className="text-ink-2 leading-snug">{cleanCourseName(c.course_name)}</div>
+                  <div className="text-xs text-blue-600 font-mono font-medium mt-0.5">{c.course_code}</div>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="rounded-md bg-violet-50 px-1.5 py-0.5 font-mono text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-200">
+                    {c.category}
                   </span>
-                  <span className="font-semibold text-slate-900 truncate" title={item.college_name}>
-                    {displayCollege}
-                  </span>
-                  {item.location && (
-                    <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                      {item.location}
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold text-ink">{formatRank(c.closing_rank)}</td>
+                {hasRank && (
+                  <td className="px-3 py-2.5 text-right">
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 whitespace-nowrap">
+                      +{formatRank(c.closing_rank - (rank as number))}
                     </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap text-slate-600 text-[11px]">
-                  <span className="font-medium text-slate-800">
-                    <span className="font-mono text-emerald-700">[{item.course_code}]</span> {displayCourse}
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-slate-500 font-mono">Category: <strong className="text-slate-700">{item.category}</strong></span>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-[10px] text-slate-400">Pg {item.page_number}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-                <div className="text-right">
-                  <div className="text-[10px] text-slate-400 font-medium">Cutoff Rank</div>
-                  <div className="font-mono font-bold text-sm text-slate-900">
-                    {item.closing_rank.toLocaleString()}
-                  </div>
-                </div>
-
-                {margin !== null && margin >= 0 && (
-                  <div className="px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-right">
-                    <div className="text-[9px] font-semibold text-emerald-700 uppercase tracking-tight flex items-center gap-1 justify-end">
-                      <svg className="w-2.5 h-2.5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      Buffer
-                    </div>
-                    <div className="font-mono text-xs font-bold text-emerald-800">
-                      +{margin.toLocaleString()}
-                    </div>
-                  </div>
+                  </td>
                 )}
-              </div>
-            </div>
-          );
-        })}
+                <td className="px-3 py-2.5 text-right text-muted">{c.page_number}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      {rows.length > PREVIEW_ROWS && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="mt-2 text-sm font-medium text-accent hover:text-accent-hover"
+        >
+          {expanded ? 'Show fewer' : `Show all ${rows.length}`}
+        </button>
+      )}
     </div>
   );
 }

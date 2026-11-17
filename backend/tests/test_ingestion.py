@@ -48,6 +48,36 @@ def test_course_code_mapping():
     assert code == "CV"
 
 
+def test_course_mapping_handles_pdf_word_splits():
+    # The KEA PDF splits words across lines; specialisations must not fall back to plain CS.
+    assert map_course_to_code("COMPUTER SCIENCE AND ENGINEERING(DA TA SCIENCE)")[0] == "DS"
+    assert map_course_to_code("B TECH IN COMPUTER SCIENCE AND ENGINEERING(CY BER SECURITY)")[0] == "CY"
+    assert map_course_to_code("COMPUTER SCIENCE AND ENGINEERING(AR TIFICAL INTELLIGENCE & DATA SCIENCE)")[0] == "CM"
+    assert map_course_to_code("COMPUTER SCIENCE AND ENGG(ARTIFICIAL INTELLIGENCE AND MACHINE LEARNING)")[0] == "CA"
+    assert map_course_to_code("ARTIFICIAL INTELLIGENCE AND MACHINE LEARNING")[0] == "AI"
+    assert map_course_to_code("ELECTRONICS & COMPUTER ENGINEERING")[0] == "EM"
+    assert map_course_to_code("ELECTRONICS AND TELECOMMUNICA TION ENGINEERING")[0] == "ET"
+
+
+def test_distinct_programmes_get_distinct_names():
+    from app.ingestion.data_cleaner import disambiguate_course_names
+
+    mapping = disambiguate_course_names(["COMPUTER SCIENCE AND ENGINEERING", "COMPUTER ENGINEERING"])
+    assert mapping["COMPUTER SCIENCE AND ENGINEERING"] == ("CS", "Computer Science and Engineering")
+    assert mapping["COMPUTER ENGINEERING"][0] == "CS"
+    assert mapping["COMPUTER ENGINEERING"][1] != "Computer Science and Engineering"
+
+
+@pytest.mark.skipif(not os.path.exists(PDF_PATH), reason="PDF file not found")
+def test_pdf_extraction_has_no_key_collisions():
+    # Every (college, course_name, category) key must be unique, otherwise the
+    # database upsert silently overwrites one programme's cutoffs with another's.
+    result = extract_cutoff_pdf(PDF_PATH, year=2026, counselling_round=1)
+    keys = {(r["college_code"], r["course_name"], r["category"]) for r in result["records"]}
+    assert len(keys) == len(result["records"])
+    assert len(result["records"]) == result["course_count"] * 37
+
+
 @pytest.mark.skipif(not os.path.exists(PDF_PATH), reason="PDF file not found")
 def test_pdf_extraction_sample():
     # Run extractor on actual official PDF

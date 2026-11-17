@@ -98,6 +98,14 @@ class GeminiGenerator:
         response = self.llm.invoke(messages)
         answer_text = extract_text_from_ai_message(response.content)
 
+        # 4b. Out-of-scope refusal: the retrieved records were not used, so do not cite them.
+        if "outside the scope" in answer_text.lower():
+            return {
+                "answer": answer_text,
+                "evidence_status": "out_of_scope",
+                "sources": [],
+            }
+
         # 5. Extract Source References from Evidence
         sources = []
         seen_sources = set()
@@ -109,18 +117,27 @@ class GeminiGenerator:
             all_evidence.extend([d.get("metadata", {}) for d in retrieved_documents])
 
         for item in all_evidence:
-            pdf_ref = f"KCET 2026 Round {item.get('counselling_round', 1)} Cutoff PDF"
+            pdf_ref = (
+                f"KCET {item.get('year') or self.settings.DATASET_YEAR} "
+                f"Round {item.get('counselling_round', 1)} Cutoff PDF"
+            )
             page = item.get("page_number")
-            key = (pdf_ref, page)
+            # One citation per evidence record (a single page holds many records)
+            key = (item.get("college_code"), item.get("course_name"), item.get("category"))
             if key not in seen_sources and page:
                 seen_sources.add(key)
                 sources.append({
                     "document": pdf_ref,
+                    "filename": "kcet_cutoff.pdf",
                     "page_number": page,
                     "college_code": item.get("college_code"),
                     "college_name": item.get("college_name"),
+                    "course_code": item.get("course_code"),
+                    "course_name": item.get("course_name"),
                     "category": item.get("category"),
                     "closing_rank": item.get("closing_rank"),
+                    "round": item.get("counselling_round", 1),
+                    "region": item.get("seat_region"),
                 })
 
         return {

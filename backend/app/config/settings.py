@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
 
     # Embedding configuration
+    # "local"  -> sentence-transformers model on this machine (no API quota)
+    # "gemini" -> Google gemini-embedding-001 via API (free tier is rate limited)
+    EMBEDDING_PROVIDER: str = "local"
+    LOCAL_EMBEDDING_MODEL: str = "BAAI/bge-base-en-v1.5"
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSION: int = 768
 

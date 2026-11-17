@@ -23,7 +23,15 @@ def main():
         help="Embed all records including missing values (default is only records with valid closing ranks)",
     )
 
+    parser.add_argument(
+        "--categories",
+        type=str,
+        default=None,
+        help="Comma-separated categories to embed (e.g. GM,GMK,GMR,2AG,3BG). Default: all.",
+    )
+
     args = parser.parse_args()
+    categories = [c.strip() for c in args.categories.split(",")] if args.categories else None
 
     logger.info("=" * 65)
     logger.info("GEMINI EMBEDDING & PGVECTOR INDEXATION PIPELINE")
@@ -38,6 +46,7 @@ def main():
         batch_size=args.batch_size,
         limit=args.limit,
         only_non_null=not args.all_records,
+        categories=categories,
     )
 
     elapsed = time.time() - start_time

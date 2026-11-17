@@ -1,13 +1,17 @@
 import re
-from typing import Optional, Tuple
+from difflib import SequenceMatcher
+from typing import Dict, List, Optional, Tuple
 
 # Mapping of raw course strings to distinct course codes and clean titles
+# NOTE: rules are matched against a "compact" key with all whitespace removed
+# (see map_course_to_code), because the KEA PDF often splits words across
+# lines, e.g. "DA TA SCIENCE", "CY BER SECURITY", "AR TIFICIAL".
 COURSE_CODE_RULES = [
     # CS Specializations (check specific before general)
-    (r"artificial\s*intelligence.*data\s*science", "AD", "Artificial Intelligence and Data Science"),
-    (r"artificial\s*intelligence.*machine\s*learning|ai\s*&\s*ml", "AI", "Artificial Intelligence and Machine Learning"),
-    (r"computer\s*science.*artificial\s*intelligence.*machine\s*learning", "CA", "Computer Science and Engineering (AI & ML)"),
-    (r"computer\s*science.*artificial\s*intelligence", "CA", "Computer Science and Engineering (AI & ML)"),
+    (r"computer\s*science.*artifici?al\s*intelligence.*data\s*science", "CM", "Computer Science and Engineering (AI & Data Science)"),
+    (r"computer\s*science.*(artifici?al\s*intelligence|aiml|ai&ml)", "CA", "Computer Science and Engineering (AI & ML)"),
+    (r"artifici?al\s*intelligence.*data\s*science", "AD", "Artificial Intelligence and Data Science"),
+    (r"artifici?al\s*intelligence.*machine\s*learning|ai\s*&\s*ml", "AI", "Artificial Intelligence and Machine Learning"),
     (r"computer\s*science.*data\s*science", "DS", "Computer Science and Engineering (Data Science)"),
     (r"computer\s*science.*cyber\s*security", "CY", "Computer Science and Engineering (Cyber Security)"),
     (r"computer\s*science.*business\s*systems", "CB", "Computer Science and Business Systems"),
@@ -17,13 +21,15 @@ COURSE_CODE_RULES = [
     (r"computer\s*science.*cloud", "CC", "Computer Science and Engineering (Cloud Computing)"),
     (r"data\s*science", "DS", "Data Science and Engineering"),
     (r"cyber\s*security", "CY", "Cyber Security Engineering"),
+    # Hybrid electronics/electrical + computer programmes must be checked before plain CS
+    (r"electronics\s*&?\s*(and)?\s*computer", "EM", "Electronics and Computer Engineering"),
+    (r"electrical.*computer", "EK", "Electrical and Computer Engineering"),
     (r"computer\s*science|computer\s*engineering", "CS", "Computer Science and Engineering"),
     (r"information\s*science|information\s*technology", "IS", "Information Science and Engineering"),
 
     # Electronics & Communication & Allied
     (r"electronics.*telecommunication", "ET", "Electronics and Telecommunication Engineering"),
     (r"electronics.*instrumentation", "EI", "Electronics and Instrumentation Engineering"),
-    (r"electronics.*computer", "EM", "Electronics and Computer Engineering"),
     (r"vlsi", "VL", "Electronics Engineering (VLSI Design and Technology)"),
     (r"medical\s*electronics", "MD", "Medical Electronics Engineering"),
     (r"bio[- ]*medical", "BM", "Biomedical Engineering"),
@@ -44,7 +50,7 @@ COURSE_CODE_RULES = [
     (r"mechanical", "ME", "Mechanical Engineering"),
 
     # Civil, Chemical, Bio & Others
-    (r"civil.*infrastructure", "CI", "Civil and Infrastructure Engineering"),
+    (r"civil.*infrastructure", "CN", "Civil and Infrastructure Engineering"),
     (r"civil.*environmental", "CE", "Civil and Environmental Engineering"),
     (r"civil", "CV", "Civil Engineering"),
     (r"chemical", "CH", "Chemical Engineering"),
@@ -56,7 +62,7 @@ COURSE_CODE_RULES = [
     (r"fashion\s*design", "FD", "Fashion Design"),
     (r"interior\s*design", "ID", "Interior Design"),
     (r"design", "DE", "Design"),
-    (r"planning|b\.plan", "PL", "Planning (B.Plan)"),
+    (r"planning|b\.?plan", "PL", "Planning (B.Plan)"),
     (r"architecture", "AR", "Architecture"),
 ]
 
@@ -105,16 +111,65 @@ def map_course_to_code(raw_course_name: str) -> Tuple[str, str]:
     Maps raw course name from PDF to standard course code and standardized name.
     """
     cleaned = normalize_whitespace(raw_course_name)
-    cleaned_lower = cleaned.lower()
-    
+    # Compact key: lower-case with all whitespace removed, so that words split
+    # by the PDF renderer ("DA TA SCIENCE") still match the rules.
+    compact = re.sub(r"\s+", "", cleaned.lower())
+
     for pattern, code, standard_name in COURSE_CODE_RULES:
-        if re.search(pattern, cleaned_lower):
+        if re.search(pattern, compact):
             return code, standard_name
             
     # Fallback: acronym of initials
     words = [w for w in cleaned.split() if w.lower() not in ["and", "&", "in", "of", "the", "b", "tech"]]
     fallback_code = "".join([w[0].upper() for w in words[:3]]) or "ENG"
     return fallback_code, cleaned
+
+
+_DEGREE_PREFIX = re.compile(r"^\s*b\.?\s*tech\.?\s*(\(hons\))?\s*(in)?\s+", re.IGNORECASE)
+
+
+def _compact(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def disambiguate_course_names(raw_names: List[str]) -> Dict[str, Tuple[str, str]]:
+    """
+    Map each raw course name of ONE college to a (course_code, course_name)
+    pair such that distinct raw programmes never share a course_name.
+
+    Several distinct programmes of a college can fall under the same branch
+    family (e.g. "COMPUTER ENGINEERING" and "COMPUTER SCIENCE AND ENGINEERING").
+    The programme closest to the standard name keeps the standard name; the
+    others get the standard name plus their own programme title, so that no
+    record overwrites another during database upsert.
+    """
+    groups: Dict[Tuple[str, str], List[str]] = {}
+    for raw in raw_names:
+        code, std = map_course_to_code(raw)
+        groups.setdefault((code, std), [])
+        if raw not in groups[(code, std)]:
+            groups[(code, std)].append(raw)
+
+    result: Dict[str, Tuple[str, str]] = {}
+    for (code, std), raws in groups.items():
+        if len(raws) == 1:
+            result[raws[0]] = (code, std)
+            continue
+        std_key = _compact(std)
+        canonical = max(
+            raws,
+            key=lambda r: (
+                SequenceMatcher(None, _compact(_DEGREE_PREFIX.sub("", normalize_whitespace(r))), std_key).ratio(),
+                -len(r),
+            ),
+        )
+        for raw in raws:
+            if raw == canonical:
+                result[raw] = (code, std)
+            else:
+                title = _DEGREE_PREFIX.sub("", normalize_whitespace(raw)).strip().title()
+                result[raw] = (code, f"{std} - {title}")
+    return result
 
 
 def clean_rank_value(val: str) -> Optional[int]:

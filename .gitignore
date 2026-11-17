@@ -53,3 +53,6 @@ Thumbs.db
 .vscode/
 .idea/
 
+
+# The frontend keeps source code in frontend/lib (not a Python build dir)
+!frontend/lib/
